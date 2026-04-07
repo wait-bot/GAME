@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="windGrad" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" style="stop-color:#87CEEB"/>
+      <stop offset="100%" style="stop-color:#00CED1"/>
+    </linearGradient>
+  </defs>
+  <!-- 风的轨迹线1 -->
+  <path d="M8 20 Q32 16, 56 20" stroke="url(#windGrad)" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.8"/>
+  <path d="M4 32 Q28 28, 60 32" stroke="url(#windGrad)" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <path d="M8 44 Q32 40, 56 44" stroke="url(#windGrad)" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.8"/>
+  <!-- 速度箭头 -->
+  <polygon points="52,28 60,32 52,36" fill="#00CED1"/>
+</svg>

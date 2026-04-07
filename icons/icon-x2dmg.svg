@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="fireGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#FF4500"/>
+      <stop offset="50%" style="stop-color:#FF6347"/>
+      <stop offset="100%" style="stop-color:#FFD700"/>
+    </linearGradient>
+    <filter id="fireGlow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- 火焰主体 -->
+  <path d="M32 4 Q40 20, 36 28 Q44 24, 52 36 Q44 32, 44 44 Q52 52, 32 60 Q12 52, 20 44 Q20 32, 12 36 Q20 24, 28 28 Q24 20, 32 4" 
+        fill="url(#fireGrad)" filter="url(#fireGlow)"/>
+  <!-- 内部火焰 -->
+  <path d="M32 20 Q38 30, 34 36 Q40 34, 36 44 Q32 48, 28 44 Q24 34, 30 36 Q26 30, 32 20" 
+        fill="#FFD700" opacity="0.7"/>
+  <!-- 高光 -->
+  <ellipse cx="32" cy="32" rx="4" ry="6" fill="#FFF" opacity="0.3"/>
+</svg>

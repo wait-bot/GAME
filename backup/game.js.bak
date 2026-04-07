@@ -1,0 +1,2114 @@
+// 雾霾森林 - 清新风格
+console.log('雾霾森林启动');
+
+var sys = tt.getSystemInfoSync();
+var W = sys.windowWidth;
+var H = sys.windowHeight;
+console.log('Size:', W, H);
+
+var canvas = tt.createCanvas();
+canvas.width = W;
+canvas.height = H;
+var ctx = canvas.getContext('2d');
+
+var pw = W / 375;
+var ph = H / 667;
+var f = Math.min(W / 375, H / 667);
+
+var ITEMS = [
+    { id: 'atk', name: '攻击+5', icon: '⚔️', fn: function(p) { p.dmg += 5; } },
+    { id: 'hp', name: '生命+30', icon: '❤️', fn: function(p) { p.maxHp += 30; p.hp += 30; } },
+    { id: 'spd', name: '速度+15%', icon: '💨', fn: function(p) { p.spd *= 1.15; } },
+    { id: 'bul', name: '多子弹', icon: '🔱', fn: function(p) { p.bul += 1; } },
+    { id: 'rate', name: '攻速+20%', icon: '⚡', fn: function(p) { p.rate *= 0.8; } },
+    { id: 'pierce', name: '穿透', icon: '🎯', fn: function(p) { p.pierce += 1; } },
+    { id: 'crit', name: '暴击+15%', icon: '💥', fn: function(p) { p.crit = (p.crit || 0) + 0.15; } },
+    { id: 'dodge', name: '闪避+10%', icon: '💫', fn: function(p) { p.dodge = (p.dodge || 0) + 0.1; } },
+    { id: 'regen', name: '回血', icon: '💚', fn: function(p) { p.regen = (p.regen || 0) + 2; } },
+    { id: 'shield', name: '护盾', icon: '🛡️', fn: function(p) { p.shield = 1; } },
+    { id: 'x2dmg', name: '伤害x2', icon: '🔥', fn: function(p) { p.dmg *= 2; } },
+    { id: 'x2hp', name: '生命x2', icon: '🧡', fn: function(p) { p.maxHp *= 2; p.hp *= 2; } },
+    { id: 'x2bul', name: '弹量x2', icon: '✨', fn: function(p) { p.bul *= 2; } },
+    { id: 'vamp', name: '吸血', icon: '🩸', fn: function(p) { p.vamp = 5; } },
+    { id: 'gold', name: '金币+50%', icon: '💰', fn: function(p) { p.gold = (p.gold || 0) + 0.5; } },
+    { id: 'exp', name: '经验+50%', icon: '⭐', fn: function(p) { p.expB = (p.expB || 0) + 0.5; } },
+    { id: 'size', name: '体型+20%', icon: '📏', fn: function(p) { p.sz *= 1.2; } },
+    { id: 'slow', name: '减速', icon: '❄️', fn: function(p) { p.slow = 0.2; } },
+    { id: 'god', name: '无敌', icon: '🌟', fn: function(p) { p.gold = 3; } },
+    { id: 'maxhp', name: '生命MAX', icon: '💖', fn: function(p) { p.maxHp += 100; p.hp += 100; } }
+];
+
+var MONSTERS = {
+    normal: [
+        { c: '#7DDDB7', hp: 25, spd: 2.8, sz: 0.8 },
+        { c: '#7DC1DB', hp: 35, spd: 2.3, sz: 0.9 },
+        { c: '#DBD77D', hp: 50, spd: 1.8, sz: 1.1 },
+        { c: '#C87DDB', hp: 70, spd: 1.5, sz: 1.3 },
+        { c: '#DB7D9B', hp: 90, spd: 2.1, sz: 1.5 }
+    ],
+    elite: [
+        { c: '#FFD700', hp: 70, spd: 3.3, sz: 1.1 },
+        { c: '#FF6B6B', hp: 100, spd: 2.8, sz: 1.2 }
+    ],
+    boss: [
+        { c: '#8B0000', hp: 400, spd: 1.5, sz: 1.9 },
+        { c: '#4B0082', hp: 500, spd: 1.3, sz: 2.1 }
+    ]
+};
+
+var game = { playing: false, score: 0, kills: 0, killsElite: 0, killsBoss: 0, level: 1, coins: 0, wave: 1 };
+var player = null;
+var bullets = [];
+var monsters = [];
+var particles = [];
+var lastShot = 0;
+var waveInProgress = false;
+var waveAnnounce = 0;
+var frameCount = 0;
+var screen = 'logo'; // logo, menu, game, levelup, gameover, buffselect
+var logoStart = 0;
+var pendingItems = [];
+// 新增：升级提示闪烁计时器
+var levelUpFlash = 0;
+// 新增：开局buff选择相关变量
+var selectedBuff = null; // 存储选择的开局buff
+var buffSelectItems = []; // 存储buff选择弹窗的道具
+var buffSelectFlash = 0; // 存储buff选择后的闪光效果
+// 新增：特殊事件变量
+var specialEvent = false;
+var eventProgress = 0;
+var eventPhase = 0;
+var screenShake = 0;
+var redBackground = false;
+// 新增：boss关设置
+var bossWaves = [3, 6, 9];
+var bossKillRequirement = 15; // 击杀15个怪物后出现boss
+var currentKills = 0;
+var bossActive = false;
+var currentBoss = null;
+// 新增：boss配置（预留后期更改）
+var BOSS_CONFIG = {
+    wave3: {
+        hp: 5000,
+        spd: 1.5,
+        sz: 3.0, // 调大boss比例，增加压迫感
+        color: '#8B0000',
+        imagePath: 'images/boos03.png', // 第三关boss图片
+        specialAbility: 'ice弹幕', // 改为冰系弹幕攻击
+        attackCooldown: 1500, // 攻击冷却时间（毫秒）
+        lastAttack: 0, // 上次攻击时间
+        attackPattern: 0 // 当前攻击模式（0: 散射, 1: 环形, 2: 定向）
+    },
+    wave6: {
+        hp: 8000,
+        spd: 1.8,
+        sz: 2.2,
+        color: '#4B0082',
+        imagePath: 'images/boss06.png', // 第6关boss图片
+        specialAbility: 'laser'
+    },
+    wave9: {
+        hp: 10000,
+        spd: 2.0,
+        sz: 2.5,
+        color: '#FF4500',
+        imagePath: 'images/boss09.png', // 第9关boss图片
+        specialAbility: 'summon'
+    },
+    wave10: {
+        hp: 20000,
+        spd: 2.2,
+        sz: 3.0,
+        color: '#FF0000',
+        imagePath: 'images/boss10.png', // 第10关boss图片
+        specialAbility: 'summon',
+        attackCooldown: 2000
+    }
+};
+
+// 新增：角色、boss和背景图片加载
+var roleImage = null;
+var startBgImage = null;
+var menuBgImage = null;
+var backBgImage = null;
+var backBgY = 0;
+var bossImages = {};
+var monsterImage = null;
+var monsterImage2 = null;
+var monsterImage3 = null;
+var monsterImage4 = null;
+var monsterImage5 = null;
+var monsterImage6 = null;
+var rockImage = null;
+var screenShake = 0;
+var rocks = [];
+var specialEventActive = false;
+
+// 新增：音效对象
+var sounds = {
+    hit: null, // 命中音效
+    hitPlayer: null, // 被命中音效
+    dragonRoar: null, // 龙啸音效
+    rockImpact: null // 石头落地音效
+};
+
+// 加载音效
+function loadSounds() {
+    try {
+        // 创建音效对象
+        sounds.hit = new Audio();
+        sounds.hitPlayer = new Audio();
+        sounds.dragonRoar = new Audio();
+        sounds.rockImpact = new Audio();
+        
+        // 注意：这里需要替换为实际的音效文件路径
+        // 如果没有音效文件，可以使用Web Audio API生成音效
+        console.log('Sounds loaded successfully');
+    } catch (e) {
+        console.error('Error loading sounds:', e);
+    }
+}
+
+function loadRoleImage() {
+    roleImage = new Image();
+    roleImage.src = 'images/role.png';
+    roleImage.onload = function() {
+        console.log('Role image loaded successfully');
+    };
+    roleImage.onerror = function() {
+        console.error('Failed to load role image');
+    };
+}
+
+function loadStartBgImage() {
+    startBgImage = new Image();
+    startBgImage.src = 'images/start.png';
+    startBgImage.onload = function() {
+        console.log('Start background image loaded successfully');
+    };
+    startBgImage.onerror = function() {
+        console.error('Failed to load start background image');
+    };
+}
+
+function loadMenuBgImage() {
+    menuBgImage = new Image();
+    menuBgImage.src = 'images/menu.png';
+    menuBgImage.onload = function() {
+        console.log('Menu background image loaded successfully');
+    };
+    menuBgImage.onerror = function() {
+        console.error('Failed to load menu background image');
+    };
+}
+
+function loadBackBgImage() {
+    backBgImage = new Image();
+    backBgImage.src = 'images/back.png';
+    backBgImage.onload = function() {
+        console.log('Back background image loaded successfully');
+    };
+    backBgImage.onerror = function() {
+        console.error('Failed to load back background image');
+    };
+}
+
+function loadBossImages() {
+    for (var wave in BOSS_CONFIG) {
+        var config = BOSS_CONFIG[wave];
+        if (config.imagePath) {
+            var img = new Image();
+            img.onload = function() {
+                console.log('Boss image loaded successfully:', this.src);
+            };
+            img.onerror = function() {
+                console.error('Failed to load boss image:', this.src);
+            };
+            img.src = config.imagePath;
+            bossImages[wave] = img;
+        }
+    }
+}
+
+function loadMonsterImage() {
+    monsterImage = new Image();
+    monsterImage.src = 'images/moter1.png';
+    monsterImage.onload = function() {
+        console.log('Monster image loaded successfully');
+    };
+    monsterImage.onerror = function() {
+        console.error('Failed to load monster image');
+    };
+}
+
+function loadMonsterImage2() {
+    monsterImage2 = new Image();
+    monsterImage2.src = 'images/moter2.png';
+    monsterImage2.onload = function() {
+        console.log('Monster image 2 loaded successfully');
+    };
+    monsterImage2.onerror = function() {
+        console.error('Failed to load monster image 2');
+    };
+}
+
+function loadMonsterImage3() {
+    monsterImage3 = new Image();
+    monsterImage3.src = 'images/moter3.png';
+    monsterImage3.onload = function() {
+        console.log('Monster image 3 loaded successfully');
+    };
+    monsterImage3.onerror = function() {
+        console.error('Failed to load monster image 3');
+    };
+}
+
+function loadRockImage() {
+    rockImage = new Image();
+    rockImage.src = 'images/Rock2.png';
+    rockImage.onload = function() {
+        console.log('Rock image loaded successfully');
+    };
+    rockImage.onerror = function() {
+        console.error('Failed to load rock image');
+    };
+}
+
+function loadMonsterImage4() {
+    monsterImage4 = new Image();
+    monsterImage4.src = 'images/moter4.png';
+    monsterImage4.onload = function() {
+        console.log('Monster image 4 loaded successfully');
+    };
+    monsterImage4.onerror = function() {
+        console.error('Failed to load monster image 4');
+    };
+}
+
+function loadMonsterImage5() {
+    monsterImage5 = new Image();
+    monsterImage5.src = 'images/moter5.png';
+    monsterImage5.onload = function() {
+        console.log('Monster image 5 loaded successfully');
+    };
+    monsterImage5.onerror = function() {
+        console.error('Failed to load monster image 5');
+    };
+}
+
+function loadMonsterImage6() {
+    monsterImage6 = new Image();
+    monsterImage6.src = 'images/moter6.png';
+    monsterImage6.onload = function() {
+        console.log('Monster image 6 loaded successfully');
+    };
+    monsterImage6.onerror = function() {
+        console.error('Failed to load monster image 6');
+    };
+}
+
+var LEVEL_EXP = [
+    0,10,10,10,10,10,
+    20,20,20,20,20,
+    40,40,40,40,
+    80,160,320,640,1280,999999
+];
+
+var MONSTER_EXP = { normal:2, elite:4, boss:10 };
+
+// ========== 【修复1】升级逻辑：强制切levelup，确保pendingItems不为空 ==========
+function addExp(amount) {
+    if (!player || player.level >= 20) return;
+    var bonus = player.expB || 0;
+    player.exp += Math.floor(amount * (1 + bonus));
+
+    let leveledUp = false;
+    while (player.level < 20) {
+        var need = LEVEL_EXP[player.level];
+        if (player.exp < need) break;
+        player.exp -= need;
+        player.level++;
+        leveledUp = true;
+    }
+
+    if (leveledUp) {
+        // 强制进入升级弹窗
+        screen = 'levelup';
+        levelUpFlash = 60; // 闪烁60帧
+        // 修复：确保至少有3个道具可选（不过滤已拥有，后期叠加）
+        let available = ITEMS;
+        if (available.length < 3) available = ITEMS.concat(ITEMS);
+        pendingItems = [];
+        while (pendingItems.length < 3) {
+            let pick = available[Math.floor(Math.random() * available.length)];
+            if (!pendingItems.find(x => x.id === pick.id)) {
+                pendingItems.push(pick);
+            }
+        }
+        vibr();
+    }
+}
+
+function addCoins(amount) {
+    if (!game) return;
+    var bonus = player ? (player.gold || 0) : 0;
+    game.coins += Math.floor(amount * (1 + bonus));
+}
+
+var gameState = { coins:0, maxLevel:1, totalKills:0, items:{} };
+try {
+    var d = tt.getStorageSync('fogSave');
+    if (d) gameState = JSON.parse(d);
+} catch(e){}
+
+function save(){
+    tt.setStorageSync('fogSave', JSON.stringify(gameState));
+}
+
+var touching = false, touchX=0, touchY=0;
+if (tt.onTouchStart) {
+    tt.onTouchStart(function(e){
+        touching = true; touchX = e.touches[0].clientX; touchY = e.touches[0].clientY;
+    });
+    tt.onTouchMove(function(e){
+        if (touching) { touchX = e.touches[0].clientX; touchY = e.touches[0].clientY; }
+    });
+    tt.onTouchEnd(function(){ touching = false; });
+}
+
+function vibr(){
+    if (tt.vibrateShort) tt.vibrateShort({type:'medium'});
+}
+
+function triggerNinthBossDeathEvent() {
+    // 标记特殊事件为活跃
+    specialEventActive = true;
+    
+    // 屏幕剧烈抖动（延长抖动时间）
+    screenShake = 60; // 增加抖动强度
+    
+    // 播放龙啸音效
+    if (sounds.dragonRoar) {
+        try {
+            sounds.dragonRoar.currentTime = 0;
+            sounds.dragonRoar.play().catch(e => console.error('Error playing dragon roar sound:', e));
+        } catch (e) {
+            console.error('Error playing dragon roar sound:', e);
+        }
+    }
+    
+    // 生成更多落石（增加落石群体）
+    for (var i = 0; i < 40; i++) {
+        setTimeout(function() {
+            rocks.push({
+                x: Math.random() * W,
+                y: -50,
+                size: 20 + Math.random() * 50,
+                speed: 8 + Math.random() * 7, // 增加落石速度
+                rotation: Math.random() * Math.PI * 2,
+                rotationSpeed: (Math.random() - 0.5) * 0.3
+            });
+        }, i * 80); // 缩短间隔，增加落石密度
+    }
+    
+    // 监听落石是否完全落到最底部
+    var checkRocksInterval = setInterval(function() {
+        if (rocks.length === 0) {
+            clearInterval(checkRocksInterval);
+            
+            // 落石完全落到最底部后触发黑屏和进入最终关卡
+            screen = 'blackout';
+            
+            // 1秒后进入最终关卡
+            setTimeout(function() {
+                // 重置游戏状态
+                game.wave = 10; // 最终关卡
+                game.level = 10;
+                
+                // 清空怪物和子弹
+                monsters = [];
+                bullets = [];
+                rocks = [];
+                
+                // 重置特殊事件状态
+                specialEventActive = false;
+                screenShake = 0;
+                
+                // 重新显示游戏
+                screen = 'game';
+            }, 1000);
+        }
+    }, 500); // 每500毫秒检查一次
+}
+
+function startGame(isEndless) {
+    screen = 'game';
+    var pSize = W * 0.05;
+    game = { playing:true, score:0, kills:0, killsElite:0, killsBoss:0, level:1, coins:0, wave:1, isEndless: isEndless || false };
+    // 重置选择的buff，确保每次游戏都需要重新选择
+    selectedBuff = null;
+    player = {
+        x:W/2, y:H*0.5, hp:100, maxHp:100, sz:pSize, spd:pSize*0.25,
+        dmg:10, bul:1, rate:200, pierce:0, crit:0.1, exp:0, level:1,
+        color:'#6FC', god:0, shield:0, regen:0, vamp:0, slow:0, gold:0, expB:0,
+        frostStacks: 0, frostDuration: 0 // 减速效果属性
+    };
+    bullets = []; monsters = []; particles = []; waveInProgress = false; waveAnnounce = 90; pendingItems = []; levelUpFlash = 0;
+    Object.keys(gameState.items).forEach(k => {
+        var it = ITEMS.find(x=>x.id===k);
+        if (it) it.fn(player);
+    });
+    // 强制将子弹数量设置为1，确保每次新游戏都从1开始
+    player.bul = 1;
+    // 加载角色、boss和怪物图片
+    loadRoleImage();
+    loadBossImages();
+    loadMonsterImage();
+    loadMonsterImage2();
+    loadMonsterImage3();
+    loadMonsterImage4();
+    loadMonsterImage5();
+    loadMonsterImage6();
+    loadRockImage();
+    
+    // 应用选择的buff
+    if (selectedBuff) {
+        selectedBuff.fn(player);
+        // 可以在这里添加buff应用的提示
+    }
+    
+    spawnWave(); vibr();
+}
+
+function spawnWave() {
+    if (!game.playing) return;
+    
+    // 重置当前击杀计数
+    currentKills = 0;
+    bossActive = false;
+    currentBoss = null;
+    
+    // 检查是否为boss关
+    var isBossWave = bossWaves.includes(game.wave);
+    
+    if (isBossWave) {
+        // boss关：缓慢持续生成普通怪物
+        var count = 30; // 更多的普通怪物
+        var spawnInterval = 300; // 更慢的生成速度
+        for (var i=0;i<count;i++){
+            (function(i) {
+            setTimeout(function(){
+                if (!game.playing) return;
+                var type = 'normal';
+                var rand = Math.random();
+                if (rand <0.2) type='elite'; // 更多精英怪
+                var list = MONSTERS[type];
+                var base = list[Math.floor(Math.random()*list.length)];
+                var m = {
+                    type:type, hp:(base.hp+game.wave*5)*(type==='elite'?2:1),
+                    maxHp:(base.hp+game.wave*5)*(type==='elite'?2:1),
+                    spd:base.spd+game.wave*0.08, sz:base.sz, color:base.c,
+                    isBoss:false, isElite:type==='elite'
+                };
+                var side = Math.floor(Math.random()*4);
+                var mg = W*0.12;
+                if (side===0) {m.x=Math.random()*W; m.y=-mg;}
+                else if(side===1){m.x=W+mg; m.y=Math.random()*H;}
+                else if(side===2){m.x=Math.random()*W; m.y=H+mg;}
+                else {m.x=-mg; m.y=Math.random()*H;}
+                monsters.push(m);
+            }, i*spawnInterval); // 更慢的生成速度
+            })(i);
+        }
+    } else {
+        // 普通关
+        var count = 8 + game.wave * 3;
+        for (var i=0;i<count;i++){
+            (function(i) {
+            setTimeout(function(){
+                if (!game.playing) return;
+                var type = 'normal';
+                var rand = Math.random();
+                if (game.wave >=2 && rand <0.15) type='elite';
+                if (game.wave >=4 && rand <0.08) type='boss';
+                var list = MONSTERS[type];
+                var base = list[Math.floor(Math.random()*list.length)];
+                var m = {
+                    type:type, hp:(base.hp+game.wave*5)*(type==='elite'?2:type==='boss'?4:1),
+                    maxHp:(base.hp+game.wave*5)*(type==='elite'?2:type==='boss'?4:1),
+                    spd:base.spd+game.wave*0.08, sz:base.sz, color:base.c,
+                    isBoss:type==='boss', isElite:type==='elite'
+                };
+                var side = Math.floor(Math.random()*4);
+                var mg = W*0.12;
+                if (side===0) {m.x=Math.random()*W; m.y=-mg;}
+                else if(side===1){m.x=W+mg; m.y=Math.random()*H;}
+                else if(side===2){m.x=Math.random()*W; m.y=H+mg;}
+                else {m.x=-mg; m.y=Math.random()*H;}
+                monsters.push(m);
+            }, i*200);
+            })(i);
+        }
+    }
+}
+
+// 生成boss
+function spawnBoss() {
+    if (!game.playing) return;
+    
+    console.log('Entering spawnBoss function');
+    
+    // 清除所有剩余的怪物
+    monsters = [];
+    
+    // 获取当前波次的boss配置
+    var bossConfig = BOSS_CONFIG['wave' + game.wave];
+    console.log('Boss config for wave', game.wave, ':', bossConfig);
+    if (!bossConfig) return;
+    
+    // 创建boss
+    var boss = {
+        type: 'boss',
+        hp: bossConfig.hp,
+        maxHp: bossConfig.hp,
+        spd: bossConfig.spd,
+        sz: bossConfig.sz,
+        color: bossConfig.color,
+        isBoss: true,
+        isElite: false,
+        imagePath: bossConfig.imagePath,
+        specialAbility: bossConfig.specialAbility
+    };
+    
+    // 从顶部平移出现boss
+    var mg = W*0.2;
+    boss.x = W/2; // 从屏幕中心上方出现
+    boss.y = -mg;
+    
+    monsters.push(boss);
+    currentBoss = boss;
+    bossActive = true;
+    
+    console.log('Boss spawned successfully:', boss);
+    
+    // 播放boss出现动画
+    vibr();
+}
+
+function getClosest() {
+    if (!player || monsters.length===0) return null;
+    
+    // 只考虑屏幕内或屏幕附近的怪物
+    var screenMonsters = monsters.filter(m => {
+        // 检查怪物是否在屏幕内或屏幕附近（屏幕外不超过屏幕宽度或高度的50%）
+        return m.x > -W*0.5 && m.x < W*1.5 && m.y > -H*0.5 && m.y < H*1.5;
+    });
+    
+    if (screenMonsters.length === 0) return null;
+    
+    var c = screenMonsters[0];
+    var md = Math.hypot(c.x-player.x,c.y-player.y);
+    for(var i=1;i<screenMonsters.length;i++){
+        var d = Math.hypot(screenMonsters[i].x-player.x,screenMonsters[i].y-player.y);
+        if (d<md){md=d;c=screenMonsters[i];}
+    }
+    return c;
+}
+
+function shoot() {
+    if (!player || !game.playing) return;
+    if (Date.now()-lastShot < player.rate) return;
+    var t = getClosest();
+    var ang = 0;
+    if (t) {
+        ang = Math.atan2(t.y-player.y,t.x-player.x);
+    } else {
+        // 没有目标时，向当前触摸方向或默认方向发射
+        if (touching) {
+            ang = Math.atan2(touchY-player.y, touchX-player.x);
+        } else {
+            ang = Math.random() * Math.PI * 2; // 随机方向
+        }
+    }
+    var speed = W*0.025;
+    for(var i=0;i<player.bul;i++){
+        var sp = (i-(player.bul-1)/2)*0.12;
+        bullets.push({x:player.x,y:player.y,vx:Math.cos(ang+sp)*speed,vy:Math.sin(ang+sp)*speed});
+    }
+    lastShot = Date.now();
+}
+
+function update() {
+    frameCount++;
+    if (levelUpFlash > 0) levelUpFlash--;
+    if (screen === 'levelup') return; // 升级时暂停游戏逻辑
+    if (!game.playing || !player) return;
+
+    if (player.regen>0 && player.hp < player.maxHp)
+        player.hp = Math.min(player.maxHp, player.hp + player.regen/60);
+    if (player.god>0) player.god -= 1/60;
+    
+    // 处理减速效果
+    if (player.frostDuration > 0) {
+        player.frostDuration -= 16.67; // 假设60fps，每帧减少16.67毫秒
+        if (player.frostDuration <= 0) {
+            player.frostStacks = 0;
+            player.frostDuration = 0;
+        }
+    }
+    
+    // 更新屏幕抖动（延长抖动时间）
+    if (screenShake > 0) {
+        screenShake -= 0.5; // 减慢抖动衰减速度
+    }
+    
+    // 更新落石
+    if (specialEventActive) {
+        rocks = rocks.filter(rock => {
+            rock.y += rock.speed;
+            rock.rotation += rock.rotationSpeed;
+            
+            // 检查是否落地
+            if (rock.y > H) {
+                // 播放石头落地音效
+                if (sounds.rockImpact) {
+                    try {
+                        sounds.rockImpact.currentTime = 0;
+                        sounds.rockImpact.play().catch(e => console.error('Error playing rock impact sound:', e));
+                    } catch (e) {
+                        console.error('Error playing rock impact sound:', e);
+                    }
+                }
+                
+                // 添加石头碎裂效果
+                for (var i = 0; i < 5; i++) {
+                    particles.push({
+                        x: rock.x,
+                        y: H - 20,
+                        vx: (Math.random() - 0.5) * 8,
+                        vy: -5 - Math.random() * 5,
+                        life: 1,
+                        color: '#888888'
+                    });
+                }
+                return false;
+            }
+            return true;
+        });
+    }
+    
+    // 根据减速堆叠计算减速效果
+    if (player.frostStacks > 0) {
+        // 每堆叠一层增加10%的减速效果，最多5层（50%减速）
+        var maxStacks = 5;
+        var stackBonus = Math.min(player.frostStacks, maxStacks) * 0.1;
+        player.slow = stackBonus;
+    } else {
+        player.slow = 0;
+    }
+
+    var dx=0,dy=0;
+    if (touching) {dx=(touchX-player.x)/15; dy=(touchY-player.y)/15;}
+    var len = Math.sqrt(dx*dx+dy*dy);
+    if (len>0){player.x += dx/len*player.spd; player.y += dy/len*player.spd;}
+    player.x = Math.max(player.sz, Math.min(W-player.sz, player.x));
+    player.y = Math.max(player.sz, Math.min(H-player.sz, player.y));
+
+    shoot();
+
+    // 更新子弹位置
+    bullets.forEach(b=>{
+        b.x += b.vx; b.y += b.vy;
+    });
+
+    for(var i=0;i<monsters.length;i++){
+        var m = monsters[i];
+        var spd = m.spd;
+        if (player.slow) spd *= (1-player.slow);
+        var ang = Math.atan2(player.y-m.y, player.x-m.x);
+        m.x += Math.cos(ang)*spd;
+        m.y += Math.sin(ang)*spd;
+        
+        // Boss攻击逻辑
+        if (m.isBoss) {
+            var bossConfig = BOSS_CONFIG['wave' + game.wave];
+            if (bossConfig) {
+                if (bossConfig.specialAbility === 'ice弹幕') {
+                    // 冰系弹幕攻击
+                    if (!m.lastAttack) m.lastAttack = Date.now();
+                    if (Date.now() - m.lastAttack > bossConfig.attackCooldown) {
+                        // 切换攻击模式
+                        m.attackPattern = (m.attackPattern || 0) % 3;
+                        
+                        // 根据攻击模式发射不同类型的弹幕
+                        switch (m.attackPattern) {
+                            case 0:
+                                // 散射弹幕：向多个方向发射冰球
+                                var scatterCount = 6;
+                                var scatterAngleStep = Math.PI * 2 / scatterCount;
+                                for (var j = 0; j < scatterCount; j++) {
+                                    var scatterAngle = ang + j * scatterAngleStep + (Math.random() - 0.5) * 0.5;
+                                    var scatterSpeed = 3 + Math.random() * 1;
+                                    bullets.push({
+                                        x: m.x,
+                                        y: m.y,
+                                        vx: Math.cos(scatterAngle) * scatterSpeed,
+                                        vy: Math.sin(scatterAngle) * scatterSpeed,
+                                        isIce: true,
+                                        damage: 15
+                                    });
+                                }
+                                break;
+                            case 1:
+                                // 环形弹幕：向360度方向发射冰球
+                                var ringCount = 8;
+                                var ringAngleStep = Math.PI * 2 / ringCount;
+                                for (var j = 0; j < ringCount; j++) {
+                                    var ringAngle = j * ringAngleStep;
+                                    var ringSpeed = 2.5;
+                                    bullets.push({
+                                        x: m.x,
+                                        y: m.y,
+                                        vx: Math.cos(ringAngle) * ringSpeed,
+                                        vy: Math.sin(ringAngle) * ringSpeed,
+                                        isIce: true,
+                                        damage: 10
+                                    });
+                                }
+                                break;
+                            case 2:
+                                // 定向弹幕：向玩家方向发射密集冰球
+                                var directedCount = 5;
+                                var directedAngleStep = 0.3;
+                                for (var j = 0; j < directedCount; j++) {
+                                    var directedAngle = ang + (j - (directedCount - 1) / 2) * directedAngleStep;
+                                    var directedSpeed = 3.5;
+                                    bullets.push({
+                                        x: m.x,
+                                        y: m.y,
+                                        vx: Math.cos(directedAngle) * directedSpeed,
+                                        vy: Math.sin(directedAngle) * directedSpeed,
+                                        isIce: true,
+                                        damage: 20
+                                    });
+                                }
+                                break;
+                        }
+                        
+                        // 增加攻击模式计数，准备下次切换
+                        m.attackPattern = (m.attackPattern + 1) % 3;
+                        m.lastAttack = Date.now();
+                    }
+                }
+            }
+        }
+    }
+
+    // 先计算怪物受到的伤害，不立即过滤
+    var deadMonsters = [];
+    bullets = bullets.filter(b=>{
+        var hit = false;
+        
+        // 检查是否是boss的冰系攻击，对玩家造成伤害
+        if (b.isIce && player) {
+            if (Math.hypot(b.x-player.x, b.y-player.y) < player.sz) {
+                if (player.god <= 0 && player.shield <= 0) {
+                    player.hp -= b.damage;
+                    // 添加减速效果
+                    player.frostStacks = (player.frostStacks || 0) + 1;
+                    player.frostDuration = 3000; // 3秒减速效果
+                }
+                hit = true;
+                // 冰球爆炸效果 - 增强动画
+                for(var j=0;j<8;j++)
+                    particles.push({x:b.x,y:b.y,vx:(Math.random()-0.5)*10,vy:(Math.random()-0.5)*10,life:1.2,color:'#4169E1'});
+                // 添加命中闪光效果
+                particles.push({x:b.x,y:b.y,vx:0,vy:0,life:0.5,color:'#FFFFFF',size:30});
+                // 播放被命中音效
+                if (sounds.hitPlayer) {
+                    try {
+                        sounds.hitPlayer.currentTime = 0;
+                        sounds.hitPlayer.play().catch(e => console.error('Error playing hitPlayer sound:', e));
+                    } catch (e) {
+                        console.error('Error playing hitPlayer sound:', e);
+                    }
+                }
+            }
+        } else {
+            // 普通子弹对怪物造成伤害
+            for(var i=0;i<monsters.length;i++){
+                var m = monsters[i];
+                if (Math.hypot(b.x-m.x,b.y-m.y) < m.sz*player.sz){
+                    m.hp -= player.dmg;
+                    hit = true;
+                    // 增强命中动画效果
+                    for(var j=0;j<5;j++)
+                        particles.push({x:m.x,y:m.y,vx:(Math.random()-0.5)*8,vy:(Math.random()-0.5)*8,life:1,color:m.color});
+                    // 添加命中闪光效果
+                    particles.push({x:m.x,y:m.y,vx:0,vy:0,life:0.3,color:'#FFFFFF',size:20});
+                    // 添加红色闪烁效果
+                    particles.push({x:m.x,y:m.y,vx:0,vy:0,life:0.2,color:'#FF0000',size:25});
+                    // 播放命中音效
+                    if (sounds.hit) {
+                        try {
+                            sounds.hit.currentTime = 0;
+                            sounds.hit.play().catch(e => console.error('Error playing hit sound:', e));
+                        } catch (e) {
+                            console.error('Error playing hit sound:', e);
+                        }
+                    }
+                    if (m.hp <= 0) {
+                        deadMonsters.push(m);
+                    }
+                }
+            }
+        }
+        // 检查子弹是否在屏幕范围内
+        var inBounds = b.x > -50 && b.x < W + 50 && b.y > -50 && b.y < H + 50;
+        // 只有在没有命中目标且在屏幕范围内的子弹才会被保留
+        return !hit && inBounds;
+    });
+
+    // 过滤死亡的怪物并计算经验值
+    var kills=0,kelite=0,kboss=0,goldG=0;
+    monsters = monsters.filter(m=>{
+        if (m.hp<=0){
+            kills++;
+            if (m.isBoss){kboss++; addExp(MONSTER_EXP.boss); goldG+=10;}
+            else if(m.isElite){kelite++; addExp(MONSTER_EXP.elite); goldG+=5;}
+            else {addExp(MONSTER_EXP.normal); goldG+=2;}
+            // 增加粒子数量和效果
+            for(var j=0;j<10;j++)
+                particles.push({x:m.x,y:m.y,vx:(Math.random()-0.5)*12,vy:(Math.random()-0.5)*12,life:1.5,color:m.color});
+            
+            // 添加白色闪光效果
+            particles.push({x:m.x,y:m.y,vx:0,vy:0,life:0.4,color:'#FFFFFF',size:30});
+            
+            // 添加金色闪光效果（精英怪和boss）
+            if (m.isElite || m.isBoss) {
+                particles.push({x:m.x,y:m.y,vx:0,vy:0,life:0.3,color:'#FFD700',size:25});
+            }
+            
+            // 第九关boss死亡时触发特殊事件
+            if (m.isBoss && game.wave === 9) {
+                // 触发特殊事件
+                triggerNinthBossDeathEvent();
+            }
+            
+            return false;
+        }
+        return true;
+    });
+
+    if (player) {
+        for(var i=0;i<monsters.length;i++){
+            var m = monsters[i];
+            if (Math.hypot(m.x-player.x,m.y-player.y) < player.sz + m.sz*player.sz){
+                if (player.god<=0 && player.shield<=0) {
+                    // 增加伤害，精英怪和boss造成更多伤害
+                    var damage = m.isBoss ? 1.5 : m.isElite ? 0.8 : 0.5;
+                    player.hp -= damage;
+                }
+            }
+        }
+    }
+
+    if (kills>0){
+        game.kills += kills;
+        game.killsElite = (game.killsElite||0)+kelite;
+        game.killsBoss = (game.killsBoss||0)+kboss;
+        game.score += kills*10*game.wave;
+        addCoins(goldG);
+        if (player.vamp) player.hp = Math.min(player.maxHp, player.hp+player.vamp*kills);
+        
+        // 检查是否为boss关，并且击杀数达到要求
+        if (bossWaves.includes(game.wave) && !bossActive) {
+            currentKills += kills + kelite;
+            // 调试信息
+            console.log('Current kills:', currentKills, 'Required:', bossKillRequirement, 'Wave:', game.wave);
+            if (currentKills >= bossKillRequirement) {
+                // 生成boss
+                console.log('Spawning boss for wave:', game.wave);
+                spawnBoss();
+            }
+        }
+    }
+
+    if (player.hp<=0){
+        if (!game.isEndless) {
+            game.playing = false;
+            gameState.coins += game.coins;
+            gameState.maxLevel = Math.max(gameState.maxLevel, player.level);
+            gameState.totalKills = (gameState.totalKills||0)+game.kills;
+            save();
+            screen = 'gameover';
+            waveInProgress = false;
+        } else {
+            // 无尽模式下，玩家死亡后重置生命值并继续游戏
+            player.hp = player.maxHp;
+            // 可以添加一些惩罚，比如减少分数或金币
+            game.coins = Math.max(0, game.coins - 10);
+        }
+    }
+
+    if (monsters.length===0 && game.playing && !waveInProgress){
+        waveInProgress = true;
+        // 第9关结束时触发特殊事件（仅普通模式）
+        if (!game.isEndless && game.wave === 9) {
+            specialEvent = true;
+            eventProgress = 0;
+            eventPhase = 0;
+            waveInProgress = false;
+        } else {
+            waveAnnounce = 90;
+            setTimeout(()=>{
+                if (game.playing){game.wave++; waveInProgress=false; spawnWave();}
+            },1500);
+        }
+    }
+    if (waveAnnounce>0) waveAnnounce--;
+}
+
+function selectItem(idx){
+    if (!pendingItems[idx]) return;
+    var it = pendingItems[idx];
+    gameState.items[it.id] = true;
+    it.fn(player);
+    save();
+    screen = 'game';
+    touching = false;
+    vibr();
+}
+
+function render() {
+    var mx = W/2, my = H/2;
+    
+    // 应用屏幕抖动效果
+    if (screenShake > 0) {
+        var shakeX = (Math.random() - 0.5) * screenShake;
+        var shakeY = (Math.random() - 0.5) * screenShake;
+        ctx.save();
+        ctx.translate(shakeX, shakeY);
+    }
+    
+    // 游戏背景Y轴无限滚动
+    if (backBgImage && backBgImage.complete && backBgImage.naturalWidth > 0) {
+        // 绘制背景图片，上下拼接形成超长循环图
+        var imgWidth = backBgImage.width;
+        var imgHeight = backBgImage.height;
+        
+        // 计算缩放比例，确保图片宽度适配屏幕
+        var scale = W / imgWidth;
+        var scaledHeight = imgHeight * scale;
+        
+        // 绘制第一张背景
+        ctx.drawImage(backBgImage, 0, backBgY, W, scaledHeight);
+        // 绘制第二张背景（下方拼接）
+        ctx.drawImage(backBgImage, 0, backBgY + scaledHeight, W, scaledHeight);
+        // 绘制第三张背景（上方拼接，确保无缝）
+        ctx.drawImage(backBgImage, 0, backBgY - scaledHeight, W, scaledHeight);
+        
+        // 背景向下滚动
+        backBgY -= 1; // 滚动速度
+        
+        // 当背景滚动到边缘时重置位置
+        if (backBgY <= -scaledHeight) {
+            backBgY = 0;
+        }
+    } else if (redBackground) {
+        // 第10关显示红色背景
+        var grad = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, Math.max(W, H));
+        grad.addColorStop(0, 'rgba(255, 0, 0, 0.4)');
+        grad.addColorStop(0.5, 'rgba(150, 0, 0, 0.3)');
+        grad.addColorStop(1, 'rgba(0, 0, 0, 1)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0,0,W,H);
+    } else {
+        // 没有图片时使用默认背景（与加载中的背景保持一致）
+        var grad = ctx.createLinearGradient(0,0,0,H);
+        grad.addColorStop(0,'#E8F4F8');
+        grad.addColorStop(0.5,'#D0E8F0');
+        grad.addColorStop(1,'#B8D8E8');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0,0,W,H);
+    }
+
+
+
+
+
+    particles = particles.filter(p=>{
+        p.x+=p.vx; p.y+=p.vy; p.life-=0.1; // 增加生命周期减少速度，使粒子消失更快
+        if (p.life>0){
+            // 使用粒子的color属性，如果没有则使用默认颜色
+            var color = p.color || 'rgba(150,220,255,'+p.life*0.8+')';
+            ctx.fillStyle = color;
+            // 使用粒子的size属性，如果没有则使用默认大小
+            var size = p.size ? p.size * p.life : 4 * p.life;
+            
+            // 添加发光效果
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = color;
+            
+            // 绘制粒子
+            ctx.beginPath(); ctx.arc(p.x,p.y,size,0,Math.PI*2); ctx.fill();
+            
+            // 重置阴影
+            ctx.shadowBlur = 0;
+        }
+        return p.life>0;
+    });
+
+    if (player) {
+        for(var i=0;i<bullets.length;i++){
+            var b = bullets[i];
+            if (b.isIce) {
+                // 冰球渲染为蓝色
+                ctx.fillStyle = '#4169E1';
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = '#4169E1';
+            } else {
+                var isCrit = player.crit>0 && Math.random()<player.crit;
+                ctx.fillStyle = isCrit?'#FFD700':'#6AF';
+                ctx.shadowBlur =8; ctx.shadowColor=isCrit?'#FFD700':'#6CF';
+            }
+            ctx.beginPath(); ctx.arc(b.x, b.y, 5, 0, Math.PI*2); ctx.fill();
+        }
+        ctx.shadowBlur=0;
+    }
+
+    if (player) {
+        for(var i=0;i<monsters.length;i++){
+            var m=monsters[i]; var sz=m.sz*player.sz;
+            if (m.isBoss){
+                // 检查boss是否有图片
+                var bossWaveKey = 'wave' + game.wave;
+                var bossImage = bossImages[bossWaveKey];
+                
+                if (bossImage && bossImage.complete && bossImage.naturalWidth > 0) {
+                    // 使用图片渲染boss
+                    ctx.save();
+                    ctx.translate(m.x, m.y);
+                    // 移除旋转动画，改为平移效果
+                    // 绘制图片
+                    var imgSize = sz * 2.5;
+                    ctx.drawImage(bossImage, -imgSize/2, -imgSize/2, imgSize, imgSize);
+                    ctx.restore();
+                } else {
+                    // 没有图片或图片加载失败时使用默认渲染
+                    ctx.strokeStyle='#8B0000'; ctx.lineWidth=3;
+                    ctx.beginPath(); ctx.arc(m.x,m.y,sz*1.3,0,Math.PI*2); ctx.stroke();
+                    ctx.fillStyle=m.color; ctx.shadowBlur=12; ctx.shadowColor=m.color;
+                    ctx.beginPath(); ctx.arc(m.x,m.y,sz,0,Math.PI*2); ctx.fill();
+                    ctx.fillStyle='#FFF';
+                    ctx.beginPath(); ctx.arc(m.x-sz*0.25,m.y-sz*0.2,sz*0.25,0,Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(m.x+sz*0.25,m.y-sz*0.2,sz*0.25,0,Math.PI*2); ctx.fill();
+                    ctx.fillStyle='#333';
+                    ctx.beginPath(); ctx.arc(m.x-sz*0.2,m.y-sz*0.2,sz*0.12,0,Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(m.x+sz*0.3,m.y-sz*0.2,sz*0.12,0,Math.PI*2); ctx.fill();
+                }
+            }else if(m.isElite){
+                // 1-3关使用怪物图片1，3-6关使用怪物图片2，6-9关使用怪物图片3
+                var currentMonsterImage = null;
+                // 根据关卡和随机数决定使用哪个怪物图片
+                if (game.wave === 3) {
+                    // 第3关随机出现1、2关的怪物
+                    var rand = Math.random();
+                    if (rand < 0.5 && monsterImage && monsterImage.complete && monsterImage.naturalWidth > 0) {
+                        currentMonsterImage = monsterImage; // 1关怪物
+                    } else if (monsterImage4 && monsterImage4.complete && monsterImage4.naturalWidth > 0) {
+                        currentMonsterImage = monsterImage4; // 2关怪物
+                    }
+                } else if (game.wave === 6) {
+                    // 第6关随机出现4、5关的怪物
+                    var rand = Math.random();
+                    if (rand < 0.5 && monsterImage2 && monsterImage2.complete && monsterImage2.naturalWidth > 0) {
+                        currentMonsterImage = monsterImage2; // 4关怪物
+                    } else if (monsterImage5 && monsterImage5.complete && monsterImage5.naturalWidth > 0) {
+                        currentMonsterImage = monsterImage5; // 5关怪物
+                    }
+                } else if (game.wave === 9) {
+                    // 第9关随机出现7、8关的怪物
+                    var rand = Math.random();
+                    if (rand < 0.5 && monsterImage3 && monsterImage3.complete && monsterImage3.naturalWidth > 0) {
+                        currentMonsterImage = monsterImage3; // 7关怪物
+                    } else if (monsterImage6 && monsterImage6.complete && monsterImage6.naturalWidth > 0) {
+                        currentMonsterImage = monsterImage6; // 8关怪物
+                    }
+                } else if (game.wave === 10) {
+                    // 第10关随机出现前九关的所有怪物
+                    var rand = Math.random();
+                    if (rand < 0.11 && monsterImage && monsterImage.complete && monsterImage.naturalWidth > 0) {
+                        currentMonsterImage = monsterImage; // 1关怪物
+                    } else if (rand < 0.22 && monsterImage4 && monsterImage4.complete && monsterImage4.naturalWidth > 0) {
+                        currentMonsterImage = monsterImage4; // 2关怪物
+                    } else if (rand < 0.33 && monsterImage2 && monsterImage2.complete && monsterImage2.naturalWidth > 0) {
+                        currentMonsterImage = monsterImage2; // 4关怪物
+                    } else if (rand < 0.44 && monsterImage5 && monsterImage5.complete && monsterImage5.naturalWidth > 0) {
+                        currentMonsterImage = monsterImage5; // 5关怪物
+                    } else if (rand < 0.55 && monsterImage3 && monsterImage3.complete && monsterImage3.naturalWidth > 0) {
+                        currentMonsterImage = monsterImage3; // 7关怪物
+                    } else if (monsterImage6 && monsterImage6.complete && monsterImage6.naturalWidth > 0) {
+                        currentMonsterImage = monsterImage6; // 8关怪物
+                    }
+                } else if (game.wave === 2 && monsterImage4 && monsterImage4.complete && monsterImage4.naturalWidth > 0) {
+                    currentMonsterImage = monsterImage4;
+                } else if (game.wave === 5 && monsterImage5 && monsterImage5.complete && monsterImage5.naturalWidth > 0) {
+                    currentMonsterImage = monsterImage5;
+                } else if (game.wave === 8 && monsterImage6 && monsterImage6.complete && monsterImage6.naturalWidth > 0) {
+                    currentMonsterImage = monsterImage6;
+                } else if (game.wave <= 3 && monsterImage && monsterImage.complete && monsterImage.naturalWidth > 0) {
+                    currentMonsterImage = monsterImage;
+                } else if (game.wave <= 6 && monsterImage2 && monsterImage2.complete && monsterImage2.naturalWidth > 0) {
+                    currentMonsterImage = monsterImage2;
+                } else if (game.wave <= 9 && monsterImage3 && monsterImage3.complete && monsterImage3.naturalWidth > 0) {
+                    currentMonsterImage = monsterImage3;
+                }
+                
+                if (currentMonsterImage) {
+                    try {
+                        // 使用图片渲染精英怪
+                        ctx.save();
+                        ctx.translate(m.x, m.y);
+                        // 绘制图片，增加比例大小
+                        var imgSize = sz * 1.8;
+                        
+                        // 创建临时Canvas来处理白色背景
+                        var tempCanvas = document.createElement('canvas');
+                        var tempCtx = tempCanvas.getContext('2d');
+                        tempCanvas.width = imgSize;
+                        tempCanvas.height = imgSize;
+                        
+                        // 绘制图片到临时Canvas
+                        tempCtx.drawImage(currentMonsterImage, 0, 0, imgSize, imgSize);
+                        
+                        // 获取图像数据并处理白色背景
+                        var imageData = tempCtx.getImageData(0, 0, imgSize, imgSize);
+                        var data = imageData.data;
+                        for (var i = 0; i < data.length; i += 4) {
+                            var r = data[i];
+                            var g = data[i + 1];
+                            var b = data[i + 2];
+                            // 检测白色背景（RGB值接近255）
+                            if (r > 240 && g > 240 && b > 240) {
+                                // 将白色背景设为透明
+                                data[i + 3] = 0;
+                            }
+                        }
+                        tempCtx.putImageData(imageData, 0, 0);
+                        
+                        // 绘制处理后的图片
+                        ctx.drawImage(tempCanvas, -imgSize/2, -imgSize/2, imgSize, imgSize);
+                        
+                        // 添加精英怪标记
+                        ctx.strokeStyle='#FFD700'; ctx.lineWidth=2;
+                        ctx.beginPath(); ctx.arc(0, 0, imgSize/2 + 5, 0, Math.PI*2); ctx.stroke();
+                        ctx.restore();
+                    } catch (e) {
+                        // 图片渲染失败时使用默认渲染
+                        console.error('Error rendering elite monster image:', e);
+                        // 确保ctx状态正确
+                        try {
+                            ctx.restore();
+                        } catch (e2) {
+                            // 忽略restore错误
+                        }
+                        ctx.strokeStyle='#FFD700'; ctx.lineWidth=2;
+                        ctx.beginPath(); ctx.arc(m.x,m.y,sz*1.2,0,Math.PI*2); ctx.stroke();
+                        ctx.fillStyle=m.color; ctx.shadowBlur=12; ctx.shadowColor=m.color;
+                        ctx.beginPath(); ctx.arc(m.x,m.y,sz,0,Math.PI*2); ctx.fill();
+                        ctx.fillStyle='#FFF';
+                        ctx.beginPath(); ctx.arc(m.x-sz*0.25,m.y-sz*0.2,sz*0.25,0,Math.PI*2); ctx.fill();
+                        ctx.beginPath(); ctx.arc(m.x+sz*0.25,m.y-sz*0.2,sz*0.25,0,Math.PI*2); ctx.fill();
+                        ctx.fillStyle='#333';
+                        ctx.beginPath(); ctx.arc(m.x-sz*0.2,m.y-sz*0.2,sz*0.12,0,Math.PI*2); ctx.fill();
+                        ctx.beginPath(); ctx.arc(m.x+sz*0.3,m.y-sz*0.2,sz*0.12,0,Math.PI*2); ctx.fill();
+                    }
+                } else {
+                    // 默认渲染
+                    ctx.strokeStyle='#FFD700'; ctx.lineWidth=2;
+                    ctx.beginPath(); ctx.arc(m.x,m.y,sz*1.2,0,Math.PI*2); ctx.stroke();
+                    ctx.fillStyle=m.color; ctx.shadowBlur=12; ctx.shadowColor=m.color;
+                    ctx.beginPath(); ctx.arc(m.x,m.y,sz,0,Math.PI*2); ctx.fill();
+                    ctx.fillStyle='#FFF';
+                    ctx.beginPath(); ctx.arc(m.x-sz*0.25,m.y-sz*0.2,sz*0.25,0,Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(m.x+sz*0.25,m.y-sz*0.2,sz*0.25,0,Math.PI*2); ctx.fill();
+                    ctx.fillStyle='#333';
+                    ctx.beginPath(); ctx.arc(m.x-sz*0.2,m.y-sz*0.2,sz*0.12,0,Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(m.x+sz*0.3,m.y-sz*0.2,sz*0.12,0,Math.PI*2); ctx.fill();
+                }
+            } else {
+                // 1-3关使用怪物图片1，3-6关使用怪物图片2，6-9关使用怪物图片3
+                var currentMonsterImage = null;
+                // 根据关卡和随机数决定使用哪个怪物图片
+                if (game.wave === 3) {
+                    // 第3关随机出现1、2关的怪物
+                    var rand = Math.random();
+                    if (rand < 0.5 && monsterImage && monsterImage.complete && monsterImage.naturalWidth > 0) {
+                        currentMonsterImage = monsterImage; // 1关怪物
+                    } else if (monsterImage4 && monsterImage4.complete && monsterImage4.naturalWidth > 0) {
+                        currentMonsterImage = monsterImage4; // 2关怪物
+                    }
+                } else if (game.wave === 6) {
+                    // 第6关随机出现4、5关的怪物
+                    var rand = Math.random();
+                    if (rand < 0.5 && monsterImage2 && monsterImage2.complete && monsterImage2.naturalWidth > 0) {
+                        currentMonsterImage = monsterImage2; // 4关怪物
+                    } else if (monsterImage5 && monsterImage5.complete && monsterImage5.naturalWidth > 0) {
+                        currentMonsterImage = monsterImage5; // 5关怪物
+                    }
+                } else if (game.wave === 9) {
+                    // 第9关随机出现7、8关的怪物
+                    var rand = Math.random();
+                    if (rand < 0.5 && monsterImage3 && monsterImage3.complete && monsterImage3.naturalWidth > 0) {
+                        currentMonsterImage = monsterImage3; // 7关怪物
+                    } else if (monsterImage6 && monsterImage6.complete && monsterImage6.naturalWidth > 0) {
+                        currentMonsterImage = monsterImage6; // 8关怪物
+                    }
+                } else if (game.wave === 10) {
+                    // 第10关随机出现前九关的所有怪物
+                    var rand = Math.random();
+                    if (rand < 0.11 && monsterImage && monsterImage.complete && monsterImage.naturalWidth > 0) {
+                        currentMonsterImage = monsterImage; // 1关怪物
+                    } else if (rand < 0.22 && monsterImage4 && monsterImage4.complete && monsterImage4.naturalWidth > 0) {
+                        currentMonsterImage = monsterImage4; // 2关怪物
+                    } else if (rand < 0.33 && monsterImage2 && monsterImage2.complete && monsterImage2.naturalWidth > 0) {
+                        currentMonsterImage = monsterImage2; // 4关怪物
+                    } else if (rand < 0.44 && monsterImage5 && monsterImage5.complete && monsterImage5.naturalWidth > 0) {
+                        currentMonsterImage = monsterImage5; // 5关怪物
+                    } else if (rand < 0.55 && monsterImage3 && monsterImage3.complete && monsterImage3.naturalWidth > 0) {
+                        currentMonsterImage = monsterImage3; // 7关怪物
+                    } else if (monsterImage6 && monsterImage6.complete && monsterImage6.naturalWidth > 0) {
+                        currentMonsterImage = monsterImage6; // 8关怪物
+                    }
+                } else if (game.wave === 2 && monsterImage4 && monsterImage4.complete && monsterImage4.naturalWidth > 0) {
+                    currentMonsterImage = monsterImage4;
+                } else if (game.wave === 5 && monsterImage5 && monsterImage5.complete && monsterImage5.naturalWidth > 0) {
+                    currentMonsterImage = monsterImage5;
+                } else if (game.wave === 8 && monsterImage6 && monsterImage6.complete && monsterImage6.naturalWidth > 0) {
+                    currentMonsterImage = monsterImage6;
+                } else if (game.wave <= 3 && monsterImage && monsterImage.complete && monsterImage.naturalWidth > 0) {
+                    currentMonsterImage = monsterImage;
+                } else if (game.wave <= 6 && monsterImage2 && monsterImage2.complete && monsterImage2.naturalWidth > 0) {
+                    currentMonsterImage = monsterImage2;
+                } else if (game.wave <= 9 && monsterImage3 && monsterImage3.complete && monsterImage3.naturalWidth > 0) {
+                    currentMonsterImage = monsterImage3;
+                }
+                
+                if (currentMonsterImage) {
+                    try {
+                        // 使用图片渲染普通怪物
+                        ctx.save();
+                        ctx.translate(m.x, m.y);
+                        // 绘制图片，增加比例大小
+                        var imgSize = sz * 1.5;
+                        
+                        // 创建临时Canvas来处理白色背景
+                        var tempCanvas = document.createElement('canvas');
+                        var tempCtx = tempCanvas.getContext('2d');
+                        tempCanvas.width = imgSize;
+                        tempCanvas.height = imgSize;
+                        
+                        // 绘制图片到临时Canvas
+                        tempCtx.drawImage(currentMonsterImage, 0, 0, imgSize, imgSize);
+                        
+                        // 获取图像数据并处理白色背景
+                        var imageData = tempCtx.getImageData(0, 0, imgSize, imgSize);
+                        var data = imageData.data;
+                        for (var i = 0; i < data.length; i += 4) {
+                            var r = data[i];
+                            var g = data[i + 1];
+                            var b = data[i + 2];
+                            // 检测白色背景（RGB值接近255）
+                            if (r > 240 && g > 240 && b > 240) {
+                                // 将白色背景设为透明
+                                data[i + 3] = 0;
+                            }
+                        }
+                        tempCtx.putImageData(imageData, 0, 0);
+                        
+                        // 绘制处理后的图片
+                        ctx.drawImage(tempCanvas, -imgSize/2, -imgSize/2, imgSize, imgSize);
+                        ctx.restore();
+                    } catch (e) {
+                        // 图片渲染失败时使用默认渲染
+                        console.error('Error rendering monster image:', e);
+                        // 确保ctx状态正确
+                        try {
+                            ctx.restore();
+                        } catch (e2) {
+                            // 忽略restore错误
+                        }
+                        ctx.fillStyle=m.color; ctx.shadowBlur=12; ctx.shadowColor=m.color;
+                        ctx.beginPath(); ctx.arc(m.x,m.y,sz,0,Math.PI*2); ctx.fill();
+                        ctx.fillStyle='#FFF';
+                        ctx.beginPath(); ctx.arc(m.x-sz*0.25,m.y-sz*0.2,sz*0.25,0,Math.PI*2); ctx.fill();
+                        ctx.beginPath(); ctx.arc(m.x+sz*0.25,m.y-sz*0.2,sz*0.25,0,Math.PI*2); ctx.fill();
+                        ctx.fillStyle='#333';
+                        ctx.beginPath(); ctx.arc(m.x-sz*0.2,m.y-sz*0.2,sz*0.12,0,Math.PI*2); ctx.fill();
+                        ctx.beginPath(); ctx.arc(m.x+sz*0.3,m.y-sz*0.2,sz*0.12,0,Math.PI*2); ctx.fill();
+                    }
+                } else {
+                    // 默认渲染
+                    ctx.fillStyle=m.color; ctx.shadowBlur=12; ctx.shadowColor=m.color;
+                    ctx.beginPath(); ctx.arc(m.x,m.y,sz,0,Math.PI*2); ctx.fill();
+                    ctx.fillStyle='#FFF';
+                    ctx.beginPath(); ctx.arc(m.x-sz*0.25,m.y-sz*0.2,sz*0.25,0,Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(m.x+sz*0.25,m.y-sz*0.2,sz*0.25,0,Math.PI*2); ctx.fill();
+                    ctx.fillStyle='#333';
+                    ctx.beginPath(); ctx.arc(m.x-sz*0.2,m.y-sz*0.2,sz*0.12,0,Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(m.x+sz*0.3,m.y-sz*0.2,sz*0.12,0,Math.PI*2); ctx.fill();
+                }
+            }
+            ctx.shadowBlur=0;
+        }
+
+        var sz=player.sz;
+        if (player.shield>0){
+            ctx.fillStyle='rgba(150,200,255,0.3)';
+            ctx.beginPath(); ctx.arc(player.x,player.y-sz*0.2,sz*1.3,0,Math.PI*2); ctx.fill();
+            ctx.strokeStyle='#6CF'; ctx.lineWidth=2; ctx.stroke();
+        }
+        
+        // 使用角色图片渲染
+        if (roleImage && roleImage.complete && roleImage.naturalWidth > 0) {
+            ctx.save();
+            ctx.translate(player.x, player.y - sz*0.2);
+            // 添加柔和的阴影效果，使其与背景融合
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+            
+            // 创建临时Canvas来处理白色背景
+            var tempCanvas = document.createElement('canvas');
+            var tempCtx = tempCanvas.getContext('2d');
+            var imgSize = sz * 1.6;
+            tempCanvas.width = imgSize;
+            tempCanvas.height = imgSize;
+            
+            // 绘制图片到临时Canvas
+            tempCtx.drawImage(roleImage, 0, 0, imgSize, imgSize);
+            
+            // 获取图像数据并处理白色背景
+            var imageData = tempCtx.getImageData(0, 0, imgSize, imgSize);
+            var data = imageData.data;
+            for (var i = 0; i < data.length; i += 4) {
+                var r = data[i];
+                var g = data[i + 1];
+                var b = data[i + 2];
+                // 检测白色背景（RGB值接近255）
+                if (r > 240 && g > 240 && b > 240) {
+                    // 将白色背景设为透明
+                    data[i + 3] = 0;
+                }
+            }
+            tempCtx.putImageData(imageData, 0, 0);
+            
+            // 绘制处理后的图片
+            ctx.drawImage(tempCanvas, -imgSize/2, -imgSize/2, imgSize, imgSize);
+            
+            ctx.restore();
+        } else {
+            // 没有图片时使用默认渲染
+            ctx.fillStyle = player.god>0?'#FFF':'#6FC';
+            ctx.shadowBlur=15; ctx.shadowColor=player.god>0?'#FFF':'#6DF';
+            ctx.beginPath(); ctx.arc(player.x,player.y-sz*0.2,sz*0.8,0,Math.PI*2); ctx.fill();
+            ctx.fillStyle='#FFF';
+            ctx.beginPath(); ctx.arc(player.x-sz*0.2,player.y-sz*0.3,sz*0.2,0,Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(player.x+sz*0.2,player.y-sz*0.3,sz*0.2,0,Math.PI*2); ctx.fill();
+            ctx.fillStyle='#333';
+            ctx.beginPath(); ctx.arc(player.x-sz*0.15,player.y-sz*0.3,sz*0.1,0,Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(player.x+sz*0.25,player.y-sz*0.3,sz*0.1,0,Math.PI*2); ctx.fill();
+        }
+        
+        if (player.god>0 && Math.floor(frameCount/5)%2===0){
+            ctx.strokeStyle='#FFD700'; ctx.lineWidth=3;
+            ctx.beginPath(); ctx.arc(player.x,player.y-sz*0.2,sz*1.1,0,Math.PI*2); ctx.stroke();
+        }
+        ctx.shadowBlur=0;
+        var show=[];
+        if (player.shield>0)show.push('🛡️');
+        if (player.god>0)show.push('🌟');
+        if (player.vamp>0)show.push('🩸');
+        if (player.slow>0)show.push('❄️');
+        if (show.length>0){
+            var s=player.x-show.length*10;
+            ctx.font='12px Arial';
+            for(var j=0;j<show.length;j++) ctx.fillText(show[j],s+j*20,player.y+sz*0.8);
+        }
+
+        // ========== 【强化】升级提示动画效果 ==========
+        if (levelUpFlash > 0 && screen !== 'levelup') {
+            // 计算动画参数
+            var progress = levelUpFlash / 60;
+            var scale = 1 + Math.sin(progress * Math.PI * 2) * 0.2;
+            var alpha = Math.max(0, Math.sin(progress * Math.PI) * 0.8 + 0.2);
+            
+            // 绘制光效背景
+            ctx.save();
+            ctx.translate(W/2, H/2);
+            ctx.scale(scale, scale);
+            
+            var glowRadius = 100;
+            var glowGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, glowRadius);
+            glowGrad.addColorStop(0, 'rgba(255, 107, 107, ' + alpha * 0.5 + ')');
+            glowGrad.addColorStop(0.5, 'rgba(255, 107, 107, ' + alpha * 0.2 + ')');
+            glowGrad.addColorStop(1, 'rgba(255, 107, 107, 0)');
+            ctx.fillStyle = glowGrad;
+            ctx.beginPath();
+            ctx.arc(0, 0, glowRadius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 绘制升级文字
+            ctx.font = 'bold 48px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#FF6B6B';
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#FF6B6B';
+            ctx.fillText('升级了！', 0, -20);
+            
+            // 绘制等级数字
+            ctx.font = 'bold 36px Arial';
+            ctx.fillStyle = '#5A9AC8';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#5A9AC8';
+            ctx.fillText('Lv.' + player.level, 0, 30);
+            
+            ctx.restore();
+        }
+    }
+    
+    // 渲染落石
+    if (specialEventActive) {
+        for (var i = 0; i < rocks.length; i++) {
+            var rock = rocks[i];
+            ctx.save();
+            ctx.translate(rock.x, rock.y);
+            ctx.rotate(rock.rotation);
+            
+            if (rockImage && rockImage.complete && rockImage.naturalWidth > 0) {
+                // 使用石头图片
+                ctx.drawImage(rockImage, -rock.size/2, -rock.size/2, rock.size, rock.size);
+            } else {
+                // 默认石头渲染
+                ctx.fillStyle = '#888888';
+                ctx.beginPath();
+                ctx.arc(0, 0, rock.size/2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            ctx.restore();
+        }
+    }
+    
+    // 恢复屏幕抖动效果
+    if (screenShake > 0) {
+        ctx.restore();
+    }
+}
+
+function drawLogo(time){
+    // 使用开始背景图片
+    if (startBgImage && startBgImage.complete && startBgImage.naturalWidth > 0) {
+        ctx.drawImage(startBgImage, 0, 0, W, H);
+    } else {
+        // 没有图片时使用默认背景
+        var g=ctx.createLinearGradient(0,0,0,H);
+        g.addColorStop(0,'#E0F0F8'); g.addColorStop(0.5,'#D0E8F0'); g.addColorStop(1,'#C0E0E8');
+        ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+        ctx.fillStyle='rgba(255,255,255,0.7)';
+        for(var i=0;i<15;i++){
+            var fx=(i*80+time*0.2)%(W+160)-80;
+            var fy=H*0.35+(i*50+time*0.12)%(H*0.4);
+            ctx.beginPath(); ctx.ellipse(fx,fy,90+(i%2)*30,35+(i%3)*15,0,0,Math.PI*2); ctx.fill();
+        }
+    }
+    var mx=W/2, my=H/2;
+    var t=Math.floor(W*0.13);
+    ctx.font='bold '+t+'px Arial'; ctx.textAlign='center'; ctx.shadowBlur=20;
+    ctx.shadowColor='rgba(100,180,220,0.5)';
+    ctx.fillStyle='#5A9AC8'; ctx.fillText('雾霾森林',mx,my-H*0.2);
+    ctx.fillStyle='#6AABD8'; ctx.fillText('雾霾森林',mx+1,my-H*0.2+1);
+    ctx.fillStyle='#7ABCDE'; ctx.fillText('雾霾森林',mx,my-H*0.2-1);
+    ctx.shadowBlur=0;
+    ctx.font='bold '+Math.floor(W*0.04)+'px Arial'; ctx.fillStyle='#8AC';
+    ctx.fillText('THE SMOGGY FOREST',mx,my-H*0.08);
+    var p=Math.min(1,time/2500);
+    ctx.fillStyle='rgba(150,200,220,0.4)'; ctx.fillRect(W*0.2,my+H*0.15,W*0.6,10);
+    ctx.fillStyle='#6AACDE'; ctx.shadowBlur=10; ctx.shadowColor='#8AC';
+    ctx.fillRect(W*0.2,my+H*0.15,W*0.6*p,10); ctx.shadowBlur=0;
+    ctx.font='14px Arial'; ctx.fillStyle='#8AA'; ctx.fillText('Loading...',mx,my+H*0.28);
+    if (time>2800) screen='menu';
+}
+
+function drawMenu(){
+    var mx=W/2, my=H/2;
+    // 使用菜单背景图片
+    if (menuBgImage && menuBgImage.complete && menuBgImage.naturalWidth > 0) {
+        ctx.drawImage(menuBgImage, 0, 0, W, H);
+    } else {
+        // 没有图片时使用默认背景
+        var g=ctx.createLinearGradient(0,0,0,H);
+        g.addColorStop(0,'#E8F4F8'); g.addColorStop(0.5,'#D8E8F0'); g.addColorStop(1,'#C8E0E8');
+        ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+        ctx.fillStyle='rgba(255,255,255,0.65)';
+        for(var i=0;i<12;i++){
+            var fx=(i*90+frameCount*0.2)%(W+180)-90;
+            var fy=(i*60+frameCount*0.12)%H;
+            ctx.beginPath(); ctx.ellipse(fx,fy,100+(i%2)*30,40+(i%3)*15,0,0,Math.PI*2); ctx.fill();
+        }
+    }
+    var t=Math.floor(W*0.11);
+    ctx.font='bold '+t+'px Arial'; ctx.textAlign='center'; ctx.shadowBlur=15;
+    ctx.shadowColor='rgba(100,180,220,0.4)'; ctx.fillStyle='#5A9AB8';
+    ctx.fillText('雾霾森林',mx,my-H*0.28); ctx.shadowBlur=0;
+    var cy=my-H*0.16, ch=H*0.055;
+    ctx.fillStyle='rgba(255,255,255,0.7)';
+    ctx.beginPath(); ctx.roundRect(W*0.15,cy,W*0.7,ch,12); ctx.fill();
+    ctx.strokeStyle='rgba(150,200,220,0.5)'; ctx.lineWidth=2; ctx.stroke();
+    ctx.font='13px Arial'; ctx.fillStyle='#6A8A9A';
+    ctx.fillText('最高等级 '+(gameState.maxLevel||1)+' | 总击杀 '+(gameState.totalKills||0),mx,cy+ch*0.6);
+    var bw=W*0.68, bh=H*0.058, sy=my-H*0.1, gap=H*0.016;
+    drawBtn(mx,sy,bw,bh,'#5A9AB8','#E8F4F8','☁️ 普通模式');
+    drawBtn(mx,sy+bh+gap,bw,bh,'#8A6A9A','#F0E8F8','⚡ 无尽模式');
+    drawBtn(mx,sy+(bh+gap)*2,bw,bh,'#8AA89A','#F0F8E8','🌿 开局BUFF');
+    drawBtn(mx,sy+(bh+gap)*3,bw,bh,'#9A8AAA','#F0E8F8','🎀 皮肤商店');
+    ctx.font='bold 22px Arial'; ctx.fillStyle='#8A8'; ctx.shadowBlur=8;
+    ctx.shadowColor='rgba(150,200,100,0.5)'; ctx.fillText('💰 '+(gameState.coins||0),mx,my+H*0.32);
+    ctx.shadowBlur=0;
+    if (touching){
+        if (touchY>=sy && touchY<=sy+bh){startGame(false); touching=false;} // 普通模式
+        else if(touchY>=sy+bh+gap && touchY<=sy+bh*2+gap){startGame(true); touching=false;} // 无尽模式
+        else if(touchY>=sy+(bh+gap)*2 && touchY<=sy+bh*3+(bh+gap)*2){
+            // 进入buff选择界面
+            screen = 'buffselect';
+            // 生成随机道具
+            buffSelectItems = [];
+            var availableItems = [...ITEMS];
+            for (var i = 0; i < 3; i++) {
+                if (availableItems.length === 0) break;
+                var randomIndex = Math.floor(Math.random() * availableItems.length);
+                buffSelectItems.push(availableItems[randomIndex]);
+                availableItems.splice(randomIndex, 1);
+            }
+            touching = false;
+        }
+    }
+}
+
+function drawBtn(x,y,w,h,bg,fg,txt){
+    var hv=touching&&touchX>x-w/2&&touchX<x+w/2&&touchY>y&&touchY<y+h;
+    ctx.fillStyle=hv?fg:bg;
+    ctx.beginPath(); ctx.roundRect(x-w/2,y,w,h,h/2); ctx.fill();
+    ctx.strokeStyle=fg; ctx.lineWidth=2; ctx.stroke();
+    ctx.font='bold '+Math.floor(h*0.38)+'px Arial';
+    ctx.fillStyle=hv?bg:fg; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(txt,x,y+h/2);
+}
+
+function drawHUD(){
+    var st=H*0.05, bw=W*0.82, bh=16, bx=W*0.09, by=st;
+    ctx.fillStyle='rgba(255,255,255,0.8)';
+    ctx.beginPath(); ctx.roundRect(bx,by,bw,bh,8); ctx.fill();
+    if (player){
+        var hp=Math.max(0,player.hp/player.maxHp);
+        var g=ctx.createLinearGradient(bx,0,bx+bw*hp,0);
+        g.addColorStop(0,'#5AC'); g.addColorStop(1,'#7EC');
+        ctx.fillStyle=g;
+        ctx.beginPath(); ctx.roundRect(bx+2,by+2,(bw-4)*hp,bh-4,6); ctx.fill();
+    }
+    ctx.font='bold 10px Arial'; ctx.fillStyle='#FFF'; ctx.textAlign='center';
+    ctx.fillText(Math.floor(player?player.hp:0)+'/'+(player?player.maxHp:0),bx+bw/2,by+bh-3);
+    var ey=by+bh+4;
+    ctx.fillStyle='rgba(255,255,255,0.7)'; ctx.fillRect(bx,ey,bw,4);
+    if (player && player.level<20){
+        var nd=LEVEL_EXP[player.level];
+        ctx.fillStyle='#9AC'; ctx.fillRect(bx,ey,bw*Math.min(1,player.exp/nd),4);
+    }
+    ctx.font='13px Arial'; ctx.fillStyle='#5A8A9A'; ctx.textAlign='left';
+    ctx.fillText('Lv.'+(player?player.level:1),bx,ey+20);
+    if (game) {
+        ctx.fillStyle='#8A8A6A'; ctx.fillText('第 '+game.wave+' 关',bx+55,ey+20);
+        ctx.textAlign='right'; ctx.fillStyle='#6A8A9A';
+        ctx.fillText('Score '+game.score,W-bx,ey+20);
+        ctx.fillStyle='#7A7'; ctx.fillText('💰 '+game.coins,W-bx,ey+38);
+        if (waveAnnounce>0){
+            var a=Math.min(1,waveAnnounce/30); ctx.globalAlpha=a;
+            ctx.font='bold '+Math.floor(W*0.08)+'px Arial'; ctx.textAlign='center';
+            ctx.fillStyle='#5A9AC8'; ctx.shadowBlur=15; ctx.shadowColor='#8AC';
+            ctx.fillText('第 '+game.wave+' 关',W/2,H*0.4); ctx.shadowBlur=0; ctx.globalAlpha=1;
+        }
+    }
+    
+    // 绘制boss血量条
+    drawBossHealth();
+}
+
+// 绘制boss血量条
+function drawBossHealth() {
+    if (!currentBoss) return;
+    
+    var bw = W * 0.7;
+    var bh = H * 0.025;
+    var bx = (W - bw) / 2;
+    var by = H * 0.1;
+    
+    // 血量条背景
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(bx - 3, by - 3, bw + 6, bh + 6);
+    
+    // 血量条
+    var hpWidth = (currentBoss.hp / currentBoss.maxHp) * bw;
+    var hpGrad = ctx.createLinearGradient(0, by, hpWidth, by);
+    hpGrad.addColorStop(0, '#FF0000');
+    hpGrad.addColorStop(1, '#FF6666');
+    ctx.fillStyle = hpGrad;
+    ctx.fillRect(bx, by, hpWidth, bh);
+    
+    // 血量条边框
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx, by, bw, bh);
+    
+    // Boss标题
+    ctx.font = 'bold 18px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#FFD700';
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = '#FF4500';
+    ctx.fillText('BOSS', W/2, by - 25);
+    ctx.shadowBlur = 0;
+    
+    // 移除血量文本显示
+    // ctx.font = '14px Arial';
+    // ctx.fillStyle = '#FFFFFF';
+    // ctx.fillText(Math.round(currentBoss.hp) + ' / ' + currentBoss.maxHp, W/2, by + bh/2);
+}
+
+// ========== 【修复3】重写drawLevelUp：层级最高、强制显示、点击正常 ==========
+function drawLevelUp(){
+    // 全屏半透明遮罩，使用清新的渐变效果
+    var overlayGrad = ctx.createLinearGradient(0, 0, W, H);
+    overlayGrad.addColorStop(0, 'rgba(100, 180, 220, 0.2)');
+    overlayGrad.addColorStop(1, 'rgba(100, 180, 220, 0.4)');
+    ctx.fillStyle = overlayGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // 升级光效背景
+    var glowRadius = Math.min(W, H) * 0.6;
+    ctx.beginPath();
+    ctx.arc(W/2, H/2, glowRadius, 0, Math.PI * 2);
+    var glowGrad = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, glowRadius);
+    glowGrad.addColorStop(0, 'rgba(100, 180, 220, 0.3)');
+    glowGrad.addColorStop(0.5, 'rgba(100, 180, 220, 0.1)');
+    glowGrad.addColorStop(1, 'rgba(100, 180, 220, 0)');
+    ctx.fillStyle = glowGrad;
+    ctx.fill();
+
+    // 标题区域
+    var mx = W/2;
+    var titleY = H * 0.3;
+    
+    // 等级数字背景
+    var levelCircleSize = 60;
+    var levelCircleGrad = ctx.createLinearGradient(mx - levelCircleSize/2, titleY - levelCircleSize/2, mx + levelCircleSize/2, titleY + levelCircleSize/2);
+    levelCircleGrad.addColorStop(0, '#5A9AC8');
+    levelCircleGrad.addColorStop(1, '#7EC0E8');
+    ctx.fillStyle = levelCircleGrad;
+    ctx.beginPath();
+    ctx.arc(mx, titleY, levelCircleSize/2, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // 等级数字
+    ctx.font = 'bold 32px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText('Lv.' + player.level, mx, titleY);
+
+    // 标题文字
+    ctx.font = 'bold 28px Arial';
+    ctx.fillStyle = '#333333';
+    ctx.fillText('升级了！', mx, titleY + levelCircleSize/2 + 20);
+
+    ctx.font = '18px Arial';
+    ctx.fillStyle = '#666666';
+    ctx.fillText('选择一个强化能力', mx, titleY + levelCircleSize/2 + 45);
+
+    // 3个道具按钮 - 横向排列
+    var totalBtnW = W * 0.85;
+    var btnW = totalBtnW / 3 - 10;
+    var btnH = 90;
+    var startX = mx - totalBtnW / 2;
+    var startY = H * 0.6;
+    var btnGap = 15;
+    
+    for(var i=0; i<3; i++){
+        var it = pendingItems && pendingItems[i];
+        if (it) {
+            var x = startX + i * (btnW + btnGap);
+            var hover = touching && touchX > x && touchX < x + btnW &&
+                        touchY > startY && touchY < startY + btnH;
+
+            // 半透明按钮背景
+            ctx.fillStyle = hover ? 'rgba(90, 154, 200, 0.9)' : 'rgba(255, 255, 255, 0.8)';
+            
+            // 按钮圆角矩形
+            ctx.beginPath();
+            ctx.roundRect(x, startY, btnW, btnH, 20);
+            ctx.fill();
+            
+            // 按钮光泽效果
+            if (!hover) {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                ctx.beginPath();
+                ctx.roundRect(x + 2, startY + 2, btnW - 4, btnH/2 - 2, 18);
+                ctx.fill();
+            }
+
+            // 按钮图标
+            ctx.font = '40px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = hover ? '#FFFFFF' : '#5A9AC8';
+            ctx.fillText(it.icon, x + btnW/2, startY + btnH/2 - 15);
+
+            // 按钮文字
+            ctx.font = 'bold 16px Arial';
+            ctx.fillStyle = hover ? '#FFFFFF' : '#333333';
+            ctx.fillText(it.name, x + btnW/2, startY + btnH/2 + 20);
+        }
+    }
+
+    // 点击选择
+    if (touching && pendingItems) {
+        for(var i=0; i<3; i++){
+            var x = startX + i * (btnW + btnGap);
+            if (touchX > x && touchX < x + btnW &&
+                touchY > startY && touchY < startY + btnH) {
+                selectItem(i);
+                break;
+            }
+        }
+    }
+}
+
+// 处理特殊事件
+function handleSpecialEvent() {
+    eventProgress++;
+    
+    // 清除画布
+    ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+    ctx.fillRect(0, 0, W, H);
+    
+    switch(eventPhase) {
+        case 0: // 屏幕抖动
+            if (eventProgress < 120) { // 抖动2秒
+                screenShake = Math.sin(eventProgress * 0.5) * 5;
+                ctx.save();
+                ctx.translate(screenShake, screenShake);
+                render();
+                ctx.restore();
+            } else {
+                eventPhase = 1;
+                eventProgress = 0;
+            }
+            break;
+            
+        case 1: // 黑屏
+            if (eventProgress < 60) { // 黑屏1秒
+                ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+                ctx.fillRect(0, 0, W, H);
+            } else {
+                eventPhase = 2;
+                eventProgress = 0;
+            }
+            break;
+            
+        case 2: // 即将进入炼狱弹窗
+            if (eventProgress < 60) { // 1秒
+                // 背景
+                var bgGrad = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, W);
+                bgGrad.addColorStop(0, 'rgba(255, 0, 0, 0.3)');
+                bgGrad.addColorStop(1, 'rgba(0, 0, 0, 1)');
+                ctx.fillStyle = bgGrad;
+                ctx.fillRect(0, 0, W, H);
+                
+                // 弹窗
+                var panelW = W * 0.7;
+                var panelH = H * 0.3;
+                var mx = W/2;
+                var my = H/2;
+                
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+                ctx.beginPath();
+                ctx.roundRect(mx - panelW/2, my - panelH/2, panelW, panelH, 20);
+                ctx.fill();
+                
+                ctx.strokeStyle = 'rgba(255, 0, 0, 1)';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                
+                ctx.font = 'bold 28px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = 'rgba(255, 0, 0, 1)';
+                ctx.fillText('即将进入炼狱', mx, my);
+            } else {
+                eventPhase = 3;
+                eventProgress = 0;
+            }
+            break;
+            
+        case 3: // 结束特殊事件，进入第10关
+            specialEvent = false;
+            redBackground = true;
+            game.wave = 10;
+            waveInProgress = false;
+            waveAnnounce = 90;
+            setTimeout(()=>{
+                if (game.playing){
+                    spawnWave();
+                }
+            }, 1500);
+            break;
+    }
+    
+    // 继续游戏循环
+    var raf = canvas.requestAnimationFrame || tt.requestAnimationFrame || function(cb) { setTimeout(cb, 16); };
+    raf(gameLoop);
+}
+
+function drawGameOver(){
+    var mx=W/2, my=H/2;
+    ctx.fillStyle='rgba(240,248,255,0.92)'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='rgba(255,255,255,0.6)';
+    for(var i=0;i<8;i++){
+        var fx=(i*120+frameCount*0.15)%(W+150)-75;
+        var fy=my+(i*50)%(H*0.3);
+        ctx.beginPath(); ctx.ellipse(fx,fy,80,30,0,0,Math.PI*2); ctx.fill();
+    }
+    ctx.font='bold '+Math.floor(W*0.1)+'px Arial'; ctx.textAlign='center';
+    ctx.fillStyle='#DB7D9B'; ctx.shadowBlur=20; ctx.shadowColor='rgba(219,125,155,0.5)';
+    ctx.fillText('游戏结束',mx,my-H*0.25); ctx.shadowBlur=0;
+    ctx.font='16px Arial'; ctx.fillStyle='#6A8A9A';
+    if (player) {
+        ctx.fillText('最终等级: '+player.level,mx,my-H*0.12);
+    }
+    if (game) {
+        ctx.fillText('总击杀: '+game.kills,mx,my-H*0.05);
+        ctx.fillText('总关卡: '+game.wave,mx,my+H*0.02);
+        ctx.fillText('得分: '+game.score,mx,my+H*0.09);
+        ctx.fillText('金币: +'+game.coins,mx,my+H*0.16);
+    }
+    var bw=W*0.55, bh=H*0.055, by=my+H*0.25;
+    drawBtn(mx,by,bw,bh,'#5A9AB8','#E8F4F8','返回主菜单');
+    drawBtn(mx,by+bh+10,bw,bh,'#8AA89A','#F0F8E8','再来一局');
+    if (touching){
+        if (touchY>=by&&touchY<=by+bh){screen='menu'; touching=false;}
+        else if(touchY>=by+bh+10&&touchY<=by+bh*2+10){startGame(); touching=false;}
+    }
+}
+
+// ========== 【修复4】游戏循环：确保levelup最高优先级绘制 ==========
+function gameLoop(){
+    try{
+        frameCount++;
+        
+        // 处理特殊事件
+        if (specialEvent) {
+            handleSpecialEvent();
+            return;
+        }
+        
+        if (screen === 'logo') {
+            drawLogo(Date.now() - logoStart);
+        } else if (screen === 'menu') {
+            drawMenu();
+        } else if (screen === 'game') {
+            update();
+            render();
+            drawHUD();
+        } else if (screen === 'levelup') {
+            // 升级弹窗：先画游戏背景 → 再画HUD → 最后画弹窗（顶层）
+            render();
+            drawHUD();
+            drawLevelUp();
+        } else if (screen === 'gameover') {
+            render();
+            drawGameOver();
+        } else if (screen === 'buffselect') {
+            // buff选择弹窗：先画菜单背景 → 再画弹窗（顶层）
+            drawMenu();
+        } else if (screen === 'blackout') {
+            // 黑屏效果
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.95)';
+            ctx.fillRect(0, 0, W, H);
+        }
+
+        if (canvas) {
+            var raf = canvas.requestAnimationFrame || tt.requestAnimationFrame || function(cb) { setTimeout(cb, 16); };
+            raf(gameLoop);
+        } else {
+            // 如果canvas不存在，使用setTimeout继续游戏循环
+            setTimeout(gameLoop, 16);
+        }
+    }catch(e){
+        console.error('Error:', e);
+    }
+}
+
+// 绘制buff选择弹窗
+function drawBuffSelect() {
+    var mx = W/2, my = H/2;
+    
+    // 半透明遮罩
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(0, 0, W, H);
+    
+    // 标题
+    ctx.font = 'bold 32px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#5A9AC8';
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = '#8AC';
+    ctx.fillText('选择开局BUFF', mx, my - 150);
+    ctx.shadowBlur = 0;
+    
+    // 3个道具按钮 - 横向排列
+    var totalBtnW = W * 0.85;
+    var btnW = totalBtnW / 3 - 10;
+    var btnH = 90;
+    var startX = mx - totalBtnW / 2;
+    var startY = my - 50;
+    var btnGap = 15;
+    
+    for(var i=0; i<3; i++){
+        var it = buffSelectItems[i];
+        if (it) {
+            var x = startX + i * (btnW + btnGap);
+            var hover = touching && touchX > x && touchX < x + btnW &&
+                        touchY > startY && touchY < startY + btnH;
+
+            // 半透明按钮背景
+            ctx.fillStyle = hover ? 'rgba(90, 154, 200, 0.9)' : 'rgba(255, 255, 255, 0.8)';
+            
+            // 按钮圆角矩形
+            ctx.beginPath();
+            ctx.roundRect(x, startY, btnW, btnH, 20);
+            ctx.fill();
+            
+            // 按钮光泽效果
+            if (!hover) {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                ctx.beginPath();
+                ctx.roundRect(x + 2, startY + 2, btnW - 4, btnH/2 - 2, 18);
+                ctx.fill();
+            }
+
+            // 按钮图标
+            ctx.font = '40px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = hover ? '#FFFFFF' : '#5A9AC8';
+            ctx.fillText(it.icon, x + btnW/2, startY + btnH/2 - 15);
+
+            // 按钮文字
+            ctx.font = 'bold 16px Arial';
+            ctx.fillStyle = hover ? '#FFFFFF' : '#333333';
+            ctx.fillText(it.name, x + btnW/2, startY + btnH/2 + 20);
+        }
+    }
+    
+    // 点击选择
+    if (touching && buffSelectItems.length > 0) {
+        for(var i=0; i<3; i++){
+            var x = startX + i * (btnW + btnGap);
+            if (touchX > x && touchX < x + btnW &&
+                touchY > startY && touchY < startY + btnH) {
+                selectedBuff = buffSelectItems[i];
+                buffSelectFlash = 60; // 闪光效果持续60帧
+                touching = false;
+                break;
+            }
+        }
+    }
+    
+    // 显示选择后的闪光效果和提示
+    if (buffSelectFlash > 0) {
+        buffSelectFlash--;
+        var alpha = Math.min(1, buffSelectFlash / 30);
+        
+        // 闪光效果
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.beginPath();
+        ctx.arc(mx, my, 150, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        
+        // 提示文字
+        if (selectedBuff) {
+            ctx.font = 'bold 24px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#5A9AC8';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#8AC';
+            ctx.fillText('获得了：' + selectedBuff.name, mx, my + 100);
+            ctx.shadowBlur = 0;
+            
+            ctx.font = '16px Arial';
+            ctx.fillStyle = '#666666';
+            ctx.fillText('效果：' + selectedBuff.desc, mx, my + 140);
+            
+            // 3秒后返回菜单
+            if (buffSelectFlash === 1) {
+                setTimeout(function() {
+                    screen = 'menu';
+                }, 1000);
+            }
+        }
+    } else {
+        // 添加返回按钮
+        var backBtnW = W * 0.3;
+        var backBtnH = H * 0.05;
+        var backBtnY = my + 180;
+        var backHover = touching && touchX > mx - backBtnW/2 && touchX < mx + backBtnW/2 &&
+                        touchY > backBtnY && touchY < backBtnY + backBtnH;
+        
+        // 绘制返回按钮
+        ctx.fillStyle = backHover ? 'rgba(90, 154, 200, 0.9)' : 'rgba(255, 255, 255, 0.8)';
+        ctx.beginPath();
+        ctx.roundRect(mx - backBtnW/2, backBtnY, backBtnW, backBtnH, backBtnH/2);
+        ctx.fill();
+        
+        // 按钮文字
+        ctx.font = 'bold 16px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = backHover ? '#FFFFFF' : '#333333';
+        ctx.fillText('返回菜单', mx, backBtnY + backBtnH/2);
+        
+        // 处理返回按钮点击
+        if (backHover && touching) {
+            screen = 'menu';
+            touching = false;
+        }
+    }
+}
+
+// 加载背景图片和音效
+try {
+    loadStartBgImage();
+    loadMenuBgImage();
+    loadBackBgImage();
+    loadSounds();
+} catch (e) {
+    console.error('Error loading resources:', e);
+}
+
+screen = 'logo';
+logoStart = Date.now();
+gameLoop();
