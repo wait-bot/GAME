@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="vampGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8B0000"/>
+      <stop offset="50%" style="stop-color:#DC143C"/>
+      <stop offset="100%" style="stop-color:#B22222"/>
+    </linearGradient>
+    <filter id="vampGlow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- 血滴主体 -->
+  <path d="M32 4 C32 4, 16 28, 16 40 C16 52, 24 60, 32 60 C40 60, 48 52, 48 40 C48 28, 32 4, 32 4 Z" 
+        fill="url(#vampGrad)" filter="url(#vampGlow)"/>
+  <!-- 血滴高光 -->
+  <ellipse cx="26" cy="38" rx="4" ry="8" fill="#FFF" opacity="0.3"/>
+  <!-- 滴落效果 -->
+  <path d="M32 60 Q30 64, 32 68 Q34 64, 32 60" fill="url(#vampGrad)"/>
+</svg>

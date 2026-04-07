@@ -1,0 +1,21 @@
+# 抖音小游戏临时文件
+*.bak
+*.tmp
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# Node_modules (如果有)
+node_modules/
+
+# 临时目录
+temp/
+tmp/

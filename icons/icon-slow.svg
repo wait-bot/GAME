@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="iceGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#E0FFFF"/>
+      <stop offset="50%" style="stop-color:#87CEEB"/>
+      <stop offset="100%" style="stop-color:#4169E1"/>
+    </linearGradient>
+    <filter id="iceGlow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- 雪花中心 -->
+  <circle cx="32" cy="32" r="6" fill="url(#iceGrad)" filter="url(#iceGlow)"/>
+  <!-- 六个冰晶臂 -->
+  <rect x="30" y="6" width="4" height="20" fill="url(#iceGrad)" rx="2"/>
+  <rect x="30" y="38" width="4" height="20" fill="url(#iceGrad)" rx="2"/>
+  <rect x="6" y="30" width="20" height="4" fill="url(#iceGrad)" rx="2"/>
+  <rect x="38" y="30" width="20" height="4" fill="url(#iceGrad)" rx="2"/>
+  <rect x="12" y="12" width="4" height="20" fill="url(#iceGrad)" rx="2" transform="rotate(45, 14, 22)"/>
+  <rect x="48" y="12" width="4" height="20" fill="url(#iceGrad)" rx="2" transform="rotate(-45, 50, 22)"/>
+  <rect x="12" y="32" width="4" height="20" fill="url(#iceGrad)" rx="2" transform="rotate(-45, 14, 42)"/>
+  <rect x="48" y="32" width="4" height="20" fill="url(#iceGrad)" rx="2" transform="rotate(45, 50, 42)"/>
+  <!-- 小冰晶装饰 -->
+  <circle cx="32" cy="10" r="3" fill="#FFF" opacity="0.6"/>
+  <circle cx="32" cy="54" r="3" fill="#FFF" opacity="0.6"/>
+  <circle cx="10" cy="32" r="3" fill="#FFF" opacity="0.6"/>
+  <circle cx="54" cy="32" r="3" fill="#FFF" opacity="0.6"/>
+</svg>

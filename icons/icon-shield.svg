@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#87CEEB"/>
+      <stop offset="50%" style="stop-color:#4169E1"/>
+      <stop offset="100%" style="stop-color:#191970"/>
+    </linearGradient>
+    <filter id="shieldGlow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- 盾牌主体 -->
+  <path d="M32 4 L56 14 L56 32 Q56 52, 32 60 Q8 52, 8 32 L8 14 Z" 
+        fill="url(#shieldGrad)" filter="url(#shieldGlow)"/>
+  <!-- 盾牌纹路 -->
+  <path d="M32 12 L48 20 L48 32 Q48 46, 32 52 Q16 46, 16 32 L16 20 Z" 
+        fill="none" stroke="#FFF" stroke-width="2" opacity="0.3"/>
+  <!-- 高光 -->
+  <ellipse cx="24" cy="24" rx="6" ry="8" fill="#FFF" opacity="0.2"/>
+  <!-- 盾牌中心图案 -->
+  <circle cx="32" cy="32" r="8" fill="#FFF" opacity="0.2"/>
+</svg>
